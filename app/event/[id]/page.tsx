@@ -81,12 +81,21 @@ export default function EventDetailPage() {
     }
 
     const formatDate = (dt: string) => dt?.slice(0, 10).replaceAll('-', '.')
-    const isPast = detail?.status === 'past'
-    const isOngoing = detail?.status === 'ongoing'
+    const eventSummary = events.find(e => String(e.id) === String(id))
+    const detailStatus = detail?.status ?? eventSummary?.status
+    const detailType = detail?.type ?? eventSummary?.type
+    const detailBannerImg = detail?.banner_img ?? eventSummary?.banner_img
+    const isPast = detailStatus === 'past'
+    const isOngoing = detailStatus === 'ongoing'
 
     // 관련 이벤트 (같은 type 또는 status)
-    const related = events
-        .filter(e => String(e.id) !== String(id) && e.status === detail?.status)
+    const sameGroupEvents = events.filter(e =>
+        String(e.id) !== String(id) && (e.type === detailType || e.status === detailStatus)
+    )
+    const related = (sameGroupEvents.length > 0
+        ? sameGroupEvents
+        : events.filter(e => String(e.id) !== String(id))
+    )
         .slice(0, 3)
 
     if (loading) return (
@@ -106,7 +115,7 @@ export default function EventDetailPage() {
         </div>
     )
 
-    const candidateBannerSrc = detail.banner_img || detail.img
+    const candidateBannerSrc = detailBannerImg || detail.img
     const bannerSrc = candidateBannerSrc !== failedImageSrc ? candidateBannerSrc : null
 
     return (
@@ -138,8 +147,8 @@ export default function EventDetailPage() {
 
                 {/* 상태 배지 */}
                 <div style={{ position: 'absolute', top: 20, left: 24 }}>
-                    <span style={{ fontSize: 12, fontWeight: 800, padding: '5px 14px', borderRadius: 20, background: STATUS_COLOR[detail.status] || '#6c63ff', color: '#fff' }}>
-                        {STATUS_LABEL[detail.status] || detail.status}
+                    <span style={{ fontSize: 12, fontWeight: 800, padding: '5px 14px', borderRadius: 20, background: STATUS_COLOR[detailStatus ?? 'ongoing'] || '#6c63ff', color: '#fff' }}>
+                        {detailStatus ? STATUS_LABEL[detailStatus] || detailStatus : '이벤트'}
                     </span>
                 </div>
             </div>
@@ -163,9 +172,9 @@ export default function EventDetailPage() {
                     <span style={{ fontSize: 13, color: 'rgba(255,255,255,.4)' }}>
                         📅 {formatDate(detail.start_datetime)} ~ {formatDate(detail.end_datetime)}
                     </span>
-                    {detail.type && (
+                    {detailType && (
                         <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 10, background: 'rgba(255,255,255,.07)', color: 'rgba(255,255,255,.5)', border: '1px solid rgba(255,255,255,.1)' }}>
-                            {detail.type}
+                            {detailType}
                         </span>
                     )}
                 </div>
@@ -261,6 +270,36 @@ export default function EventDetailPage() {
                     <div style={{ marginTop: 32, padding: '16px 20px', background: 'rgba(255,255,255,.04)', borderRadius: 12, border: '1px solid rgba(255,255,255,.07)', display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span style={{ fontSize: 18 }}>📦</span>
                         <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', margin: 0 }}>종료된 이벤트예요. 다음 이벤트를 기대해주세요!</p>
+                    </div>
+                )}
+
+                {/* 관련 이벤트 */}
+                {related.length > 0 && (
+                    <div style={{ marginTop: 56 }}>
+                        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: '0 0 20px' }}>
+                            {isOngoing ? '🎪 진행중인 다른 이벤트' : '📋 관련 이벤트'}
+                        </h2>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                            {related.map(ev => (
+                                <Link key={ev.id} href={`/event/${ev.id}`} style={{ textDecoration: 'none' }}>
+                                    <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,.07)', background: '#111', transition: 'transform .2s, border-color .2s', cursor: 'pointer' }}
+                                        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-3px)'; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(108,99,255,.3)' }}
+                                        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,.07)' }}>
+                                        <div style={{ width: '100%', aspectRatio: '16/9', overflow: 'hidden', background: '#1a1a2e' }}>
+                                            <img src={ev.img} alt={ev.name} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: ev.status === 'past' ? 'brightness(.5)' : 'none' }} />
+                                        </div>
+                                        <div style={{ padding: '10px 12px 12px' }}>
+                                            <p style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.75)', margin: '0 0 4px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                                                {ev.name}
+                                            </p>
+                                            <p style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', margin: 0 }}>
+                                                {formatDate(ev.start_datetime)} ~ {formatDate(ev.end_datetime)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </Link>
+                            ))}
+                        </div>
                     </div>
                 )}
 
@@ -388,36 +427,6 @@ export default function EventDetailPage() {
                         이벤트 목록
                     </Link>
                 </div>
-
-                {/* 관련 이벤트 */}
-                {related.length > 0 && (
-                    <div style={{ marginTop: 56 }}>
-                        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: '0 0 20px' }}>
-                            {isOngoing ? '🎪 진행중인 다른 이벤트' : '📋 관련 이벤트'}
-                        </h2>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-                            {related.map(ev => (
-                                <Link key={ev.id} href={`/event/${ev.id}`} style={{ textDecoration: 'none' }}>
-                                    <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,.07)', background: '#111', transition: 'transform .2s, border-color .2s', cursor: 'pointer' }}
-                                        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-3px)'; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(108,99,255,.3)' }}
-                                        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,.07)' }}>
-                                        <div style={{ width: '100%', aspectRatio: '16/9', overflow: 'hidden', background: '#1a1a2e' }}>
-                                            <img src={ev.img} alt={ev.name} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: ev.status === 'past' ? 'brightness(.5)' : 'none' }} />
-                                        </div>
-                                        <div style={{ padding: '10px 12px 12px' }}>
-                                            <p style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.75)', margin: '0 0 4px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                                                {ev.name}
-                                            </p>
-                                            <p style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', margin: 0 }}>
-                                                {formatDate(ev.start_datetime)} ~ {formatDate(ev.end_datetime)}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </Link>
-                            ))}
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     )

@@ -4,21 +4,6 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useEventStore } from '@/store/useEventStore'
 
-interface EventDetail {
-    id: number
-    name: string
-    img: string
-    banner_img: string
-    start_datetime: string
-    end_datetime: string
-    status: string
-    type: string
-    content?: string
-    description?: string
-    url?: string
-    items?: any[]
-}
-
 const STATUS_LABEL: Record<string, string> = {
     ongoing: '진행중',
     result: '결과 발표',
@@ -30,45 +15,70 @@ const STATUS_COLOR: Record<string, string> = {
     past: 'rgba(255,255,255,0.3)',
 }
 
+const sortOptions = [
+    { label: '최신순', value: 'latest' as const },
+    { label: '인기순', value: 'popular' as const },
+]
+
+const HeartIcon = ({ filled }: { filled: boolean }) => (
+    <svg
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        style={{
+            width: 14,
+            height: 14,
+            color: filled ? '#ff4d6d' : 'rgba(255,255,255,.35)',
+            fill: filled ? '#ff4d6d' : 'none',
+            flexShrink: 0,
+        }}
+    >
+        <path
+            d="M20.8 4.6c-2-1.8-5.1-1.6-6.9.4L12 7.1 10.1 5C8.3 3 5.2 2.8 3.2 4.6 1 6.6.9 10 .9 10l.2 1.1c.3 1.4 1.1 2.7 2.2 3.7l8.1 7.1c.4.3.9.3 1.3 0l8.1-7.1c1.1-1 1.9-2.3 2.2-3.7l.2-1.1s-.1-3.4-2.4-5.4Z"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinejoin="round"
+        />
+    </svg>
+)
+
 export default function EventDetailPage() {
     const params = useParams()
     const router = useRouter()
     const id = params?.id as string
-    const { events, onFetchEvents } = useEventStore()
+    const eventId = Number(id)
+    const {
+        events,
+        onFetchEvents,
+        selectedEvent: detail,
+        detailLoading: loading,
+        onFetchEventDetail,
+        comments,
+        commentTotal,
+        commentLoading,
+        hasNextComment,
+        onFetchComments,
+    } = useEventStore()
 
-    const [detail, setDetail] = useState<EventDetail | null>(null)
-    const [loading, setLoading] = useState(true)
-    const [imgError, setImgError] = useState(false)
+    const [sorting, setSorting] = useState<'latest' | 'popular'>('latest')
+    const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null)
 
     useEffect(() => {
         if (events.length === 0) onFetchEvents()
-    }, [])
+    }, [events.length, onFetchEvents])
 
     useEffect(() => {
-        if (!id) return
-        const load = async () => {
-            setLoading(true)
-            try {
-                // 1. 상세 API 시도
-                const res = await fetch(`https://api.laftel.net/api/events/${id}/`)
-                if (res.ok) {
-                    const data = await res.json()
-                    setDetail(data)
-                } else {
-                    // 2. 목록에서 찾기 (fallback)
-                    const found = events.find(e => String(e.id) === String(id))
-                    if (found) setDetail(found as EventDetail)
-                }
-            } catch {
-                // 3. 목록 fallback
-                const found = events.find(e => String(e.id) === String(id))
-                if (found) setDetail(found as EventDetail)
-            } finally {
-                setLoading(false)
-            }
-        }
-        load()
-    }, [id, events])
+        if (!eventId) return
+        onFetchEventDetail(eventId)
+    }, [eventId, onFetchEventDetail])
+
+    useEffect(() => {
+        if (!eventId) return
+        onFetchComments(eventId, sorting, 0)
+    }, [eventId, sorting, onFetchComments])
+
+    const handleLoadMore = () => {
+        onFetchComments(eventId, sorting, comments.length)
+    }
 
     const formatDate = (dt: string) => dt?.slice(0, 10).replaceAll('-', '.')
     const isPast = detail?.status === 'past'
@@ -96,7 +106,8 @@ export default function EventDetailPage() {
         </div>
     )
 
-    const bannerSrc = !imgError && (detail.banner_img || detail.img)
+    const candidateBannerSrc = detail.banner_img || detail.img
+    const bannerSrc = candidateBannerSrc !== failedImageSrc ? candidateBannerSrc : null
 
     return (
         <div style={{ minHeight: '100vh', background: '#0a0a0a', paddingTop: 56, paddingBottom: 80 }}>
@@ -105,6 +116,7 @@ export default function EventDetailPage() {
                 @keyframes fade-in { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: translateY(0) } }
                 .ev-content img { max-width: 100%; border-radius: 12px; }
                 .ev-content a { color: #9d97ff; }
+                .ev-content-blocks img { width: 100%; display: block; }
             `}</style>
 
             {/* 히어로 배너 */}
@@ -113,7 +125,7 @@ export default function EventDetailPage() {
                     <img
                         src={bannerSrc}
                         alt={detail.name}
-                        onError={() => setImgError(true)}
+                        onError={() => setFailedImageSrc(bannerSrc)}
                         style={{ width: '100%', maxHeight: 520, objectFit: 'cover', display: 'block', filter: isPast ? 'brightness(0.5)' : 'none' }}
                     />
                 ) : (
@@ -162,16 +174,72 @@ export default function EventDetailPage() {
                 <div style={{ height: 1, background: 'rgba(255,255,255,.07)', marginBottom: 32 }} />
 
                 {/* 이벤트 내용 */}
-                {detail.content ? (
+                {detail.contents?.blocks ? (
+                    <div className="ev-content-blocks" style={{ overflow: 'hidden', borderRadius: 16, background: '#000' }}>
+                        {detail.contents.blocks.map((block, index) => {
+                            const text = block.content?.map(item => item.content).join('') ?? ''
+
+                            if (block.type === 'image_v1' && block.src) {
+                                return (
+                                    <img
+                                        key={`${block.id}-${index}`}
+                                        src={block.src}
+                                        alt={detail.name}
+                                        style={{ width: '100%', display: 'block' }}
+                                    />
+                                )
+                            }
+
+                            if (block.type === 'heading_v1' && text) {
+                                return (
+                                    <h2
+                                        key={`${block.id}-${index}`}
+                                        style={{
+                                            margin: 0,
+                                            padding: '18px 24px',
+                                            color: '#fff',
+                                            fontSize: block.level === 1 ? 22 : 18,
+                                            fontWeight: 900,
+                                            textAlign: block.textAlign ?? 'left',
+                                        }}
+                                    >
+                                        {text}
+                                    </h2>
+                                )
+                            }
+
+                            if (block.type === 'paragraph_v1' && text) {
+                                return (
+                                    <p
+                                        key={`${block.id}-${index}`}
+                                        style={{
+                                            margin: 0,
+                                            padding: '12px 24px',
+                                            color: 'rgba(255,255,255,.72)',
+                                            fontSize: 15,
+                                            lineHeight: 1.8,
+                                            textAlign: block.textAlign ?? 'left',
+                                            whiteSpace: 'pre-wrap',
+                                        }}
+                                    >
+                                        {text}
+                                    </p>
+                                )
+                            }
+
+                            if (block.type === 'margin_v1') {
+                                return <div key={`${block.id}-${index}`} style={{ height: block.size ?? 16 }} />
+                            }
+
+                            return null
+                        })}
+                    </div>
+                ) : detail.content ? (
                     <div
                         className="ev-content"
                         style={{ color: 'rgba(255,255,255,.75)', lineHeight: 1.8, fontSize: 15 }}
                         dangerouslySetInnerHTML={{ __html: detail.content }}
                     />
-                ) : detail.description ? (
-                    <p style={{ color: 'rgba(255,255,255,.7)', lineHeight: 1.8, fontSize: 15, whiteSpace: 'pre-wrap' }}>
-                        {detail.description}
-                    </p>
                 ) : (
                     /* content/description 없으면 배너 이미지 크게 보여줌 */
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
@@ -188,15 +256,6 @@ export default function EventDetailPage() {
                     </div>
                 )}
 
-                {/* 외부 링크 버튼 */}
-                {detail.url && (
-                    <a href={detail.url} target="_blank" rel="noopener noreferrer"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 32, padding: '12px 24px', background: '#6c63ff', borderRadius: 12, color: '#fff', fontSize: 14, fontWeight: 700, textDecoration: 'none', transition: 'background .2s' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15,3 21,3 21,9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
-                        이벤트 참여하기
-                    </a>
-                )}
-
                 {/* 상태별 안내 */}
                 {isPast && (
                     <div style={{ marginTop: 32, padding: '16px 20px', background: 'rgba(255,255,255,.04)', borderRadius: 12, border: '1px solid rgba(255,255,255,.07)', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -204,6 +263,122 @@ export default function EventDetailPage() {
                         <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', margin: 0 }}>종료된 이벤트예요. 다음 이벤트를 기대해주세요!</p>
                     </div>
                 )}
+
+                {/* 댓글 */}
+                <section style={{ marginTop: 56 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+                        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: 0 }}>
+                            댓글 <span style={{ color: '#6c63ff' }}>{commentTotal.toLocaleString()}</span>
+                        </h2>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                            {sortOptions.map(option => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => setSorting(option.value)}
+                                    style={{
+                                        border: 'none',
+                                        borderRadius: 999,
+                                        padding: '7px 12px',
+                                        background: sorting === option.value ? '#6c63ff' : 'rgba(255,255,255,.06)',
+                                        color: sorting === option.value ? '#fff' : 'rgba(255,255,255,.45)',
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {commentLoading && comments.length === 0 ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '42px 0' }}>
+                            <div style={{ width: 26, height: 26, border: '2px solid rgba(255,255,255,.1)', borderTopColor: '#6c63ff', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
+                        </div>
+                    ) : comments.length === 0 ? (
+                        <div style={{ padding: '38px 0', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>
+                            첫 번째 댓글을 남겨보세요!
+                        </div>
+                    ) : (
+                        <>
+                            <ul style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid rgba(255,255,255,.06)' }}>
+                                {comments.map(comment => (
+                                    <li
+                                        key={comment.id}
+                                        style={{
+                                            display: 'flex',
+                                            gap: 12,
+                                            padding: '18px 0',
+                                            borderBottom: '1px solid rgba(255,255,255,.06)',
+                                        }}
+                                    >
+                                        {comment.author.profile_img ? (
+                                            <img
+                                                src={comment.author.profile_img}
+                                                alt={comment.author.nickname}
+                                                style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                                            />
+                                        ) : (
+                                            <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>
+                                                {comment.author.nickname[0] ?? '?'}
+                                            </div>
+                                        )}
+
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                                                <span style={{ color: 'rgba(255,255,255,.82)', fontSize: 13, fontWeight: 800 }}>
+                                                    {comment.author.nickname}
+                                                </span>
+                                                <span style={{ color: 'rgba(255,255,255,.28)', fontSize: 12 }}>
+                                                    {formatDate(comment.created)}
+                                                </span>
+                                            </div>
+                                            <p style={{ margin: 0, color: 'rgba(255,255,255,.64)', fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                                                {comment.content}
+                                            </p>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 9 }}>
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'rgba(255,255,255,.4)', fontSize: 12 }}>
+                                                    <HeartIcon filled={comment.is_liked} />
+                                                    {comment.like_count.toLocaleString()}
+                                                </span>
+                                                {comment.reply_count > 0 && (
+                                                    <span style={{ color: 'rgba(255,255,255,.32)', fontSize: 12 }}>
+                                                        답글 {comment.reply_count.toLocaleString()}개
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+
+                            {hasNextComment && (
+                                <button
+                                    type="button"
+                                    onClick={handleLoadMore}
+                                    disabled={commentLoading}
+                                    style={{
+                                        width: '100%',
+                                        marginTop: 18,
+                                        padding: '12px 0',
+                                        border: '1px solid rgba(255,255,255,.08)',
+                                        borderRadius: 12,
+                                        background: 'rgba(255,255,255,.05)',
+                                        color: 'rgba(255,255,255,.58)',
+                                        fontSize: 13,
+                                        fontWeight: 800,
+                                        cursor: commentLoading ? 'default' : 'pointer',
+                                        opacity: commentLoading ? .55 : 1,
+                                    }}
+                                >
+                                    {commentLoading ? '불러오는 중...' : '댓글 더보기'}
+                                </button>
+                            )}
+                        </>
+                    )}
+                </section>
 
                 {/* 목록으로 */}
                 <div style={{ marginTop: 48, display: 'flex', alignItems: 'center', gap: 12 }}>

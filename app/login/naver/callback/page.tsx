@@ -7,7 +7,7 @@ import { signInWithCustomToken } from 'firebase/auth'
 
 export default function NaverCallbackPage() {
     const router = useRouter()
-    const { setUser } = useAuthStore()
+    const { onLogin } = useAuthStore()
 
     useEffect(() => {
         const url = new URL(window.location.href)
@@ -36,11 +36,12 @@ export default function NaverCallbackPage() {
                 if (data.firebaseToken) {
                     // Firebase Custom Token으로 로그인
                     const result = await signInWithCustomToken(auth, data.firebaseToken)
-                    setUser({
+                    onLogin({
                         uid: result.user.uid,
                         email: result.user.email || data.email,
-                        displayName: data.name || result.user.displayName,
+                        name: data.name || result.user.displayName,
                         photoURL: data.profileImage || result.user.photoURL,
+                        membership: 'none',
                     })
                     router.push('/')
                 } else {

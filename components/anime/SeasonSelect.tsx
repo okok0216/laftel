@@ -124,7 +124,7 @@ export default function SeasonSelect({ seasons, value, onChange, episodeCount }:
                                         }
                                     `}>
                                         {isSelected
-                                            ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m5 12 5 5L20 7"/></svg>
+                                            ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m5 12 5 5L20 7" /></svg>
                                             : s.season_number
                                         }
                                     </div>

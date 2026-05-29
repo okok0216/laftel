@@ -48,8 +48,12 @@ function ChannelBlock({
                                     router.push(`/live/party/dummy-${item.tmdbId}`)
                                 } else if (!isPast) {
                                     const today = new Date()
-                                    const [h, m] = item.time.split(':').map(Number)
+                                    const h = Math.floor(item.minutesFromStart / 60) % 24
+                                    const m = item.minutesFromStart % 60
                                     today.setHours(h, m, 0, 0)
+                                    if (item.minutesFromStart >= 24 * 60) {
+                                        today.setDate(today.getDate() + 1)
+                                    }
                                     router.push(`/live/party/dummy-${item.tmdbId}?scheduledAt=${today.toISOString()}`)
                                 }
                             }}

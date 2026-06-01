@@ -39,9 +39,9 @@ export default function StoreHeader() {
                     <div className="flex items-center gap-[6px]">
                         <Link href="/" className="flex items-center gap-[12px]">
                             <img src="/images/stone.svg" alt="" className="h-7" />
-                            <img src="/images/laftel 3.svg" alt="logo" className="h-5 w-auto" />
+                            <img src="/images/logo-white.svg" alt="logo" className="h-5 w-auto" />
                         </Link>
-                        <span className="text-white font-semibold text-[15px] tracking-wide leading-none">
+                        <span className="text-white font-[100] text-[20px] tracking-wide leading-none">
                             Store
                         </span>
                     </div>
